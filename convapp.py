@@ -20,11 +20,22 @@ def check_install_pyinstaller():
             messagebox.showerror("Error", "PyInstaller is required to convert scripts. Exiting. 😢")
             sys.exit(1)
 
+def check_linuxdeploy():
+    """Check if linuxdeploy is installed for AppImage packaging."""
+    try:
+        result = subprocess.run(["linuxdeploy", "--version"],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode != 0:
+            raise Exception("linuxdeploy not found")
+    except Exception:
+        messagebox.showerror("Error", "linuxdeploy is required for AppImage creation. Install it from https://github.com/linuxdeploy/linuxdeploy 😢")
+        sys.exit(1)
+
 def convert_python_app():
+    """Convert a Python script into an executable and create a desktop entry."""
     root = tk.Tk()
     root.withdraw()
 
-    # 1. Select the Python script to convert.
     py_script = filedialog.askopenfilename(
         title="Select the Python script to convert",
         filetypes=[("Python Files", "*.py")],
@@ -34,13 +45,12 @@ def convert_python_app():
         messagebox.showinfo("Cancelled", "No Python script selected. Exiting. 😕")
         return
 
-    # 2. Enter the app name.
     app_name = simpledialog.askstring("App Name", "Enter the app name:", parent=root)
     if not app_name:
         messagebox.showinfo("Cancelled", "No app name provided. Exiting. 😕")
         return
 
-    # 3. Optionally choose an icon.
+    icon_path = None
     if messagebox.askyesno("Icon", "Do you want to choose an icon for your app? 🤔"):
         icon_path = filedialog.askopenfilename(
             title="Select an icon image (ICO recommended)",
@@ -48,19 +58,12 @@ def convert_python_app():
         )
         if not icon_path:
             icon_path = None
-    else:
-        icon_path = None
 
-    # 4. Choose terminal mode: hide terminal or not.
     use_terminal = messagebox.askyesno("Terminal?", "Should the app run in a terminal window? (No = hidden)")
-    # PyInstaller uses --noconsole to hide the terminal
     no_console_flag = "--noconsole" if not use_terminal else ""
 
-    # 5. Check/install PyInstaller.
     check_install_pyinstaller()
 
-    # 6. Run PyInstaller to convert the script.
-    # We'll run in a temporary folder to avoid clutter.
     work_dir = os.getcwd()
     pyinstaller_cmd = [
         "pyinstaller",
@@ -79,18 +82,15 @@ def convert_python_app():
         messagebox.showerror("Error", f"PyInstaller failed: {e} 😢")
         return
 
-    # 7. Move the executable to a dedicated folder.
-    # The executable is in the "dist" folder.
     dist_dir = os.path.join(work_dir, "dist")
     exe_path = os.path.join(dist_dir, app_name)
     if not os.path.exists(exe_path):
-        # Some systems might add an extension, try with .py (or .exe for Windows, but we're targeting Linux)
-        exe_path = os.path.join(dist_dir, app_name + ".py")
+        # Try with extension (if on Windows)
+        exe_path = os.path.join(dist_dir, app_name + ".exe")
         if not os.path.exists(exe_path):
             messagebox.showerror("Error", "Executable not found after PyInstaller. 😢")
             return
 
-    # Create destination folder for executables.
     final_dir = os.path.join(os.path.expanduser("~"), ".local", "share", "applications", "py_apps")
     os.makedirs(final_dir, exist_ok=True)
     final_exe_path = os.path.join(final_dir, app_name)
@@ -101,7 +101,7 @@ def convert_python_app():
         messagebox.showerror("Error", f"Failed to move the executable: {e} 😢")
         return
 
-    # 8. Cleanup PyInstaller generated files and folders.
+    # Cleanup build files
     for folder in ["build", "dist"]:
         folder_path = os.path.join(work_dir, folder)
         if os.path.exists(folder_path):
@@ -110,7 +110,6 @@ def convert_python_app():
     if os.path.exists(spec_file):
         os.remove(spec_file)
 
-    # 9. Create a .desktop file to launch the new app.
     desktop_entry = f"""[Desktop Entry]
 Type=Application
 Name={app_name}
@@ -130,41 +129,207 @@ Categories=Utility;
         messagebox.showerror("Error", f"Failed to create .desktop file: {e} 😢")
         return
 
-    messagebox.showinfo("Success", f"App '{app_name}' created successfully!\nExecutable at:\n{final_exe_path}\nDesktop entry created.")
+    messagebox.showinfo("Success", f"App '{app_name}' created successfully!\nExecutable at:\n{final_exe_path}\nDesktop entry created. 🚀")
     root.destroy()
 
-def create_app():
-    """Existing function to create a .desktop file for an existing file."""
+def convert_python_appimage():
+    """Convert a Python script into an AppImage using PyInstaller and linuxdeploy."""
     root = tk.Tk()
     root.withdraw()
 
-    file_path = filedialog.askopenfilename(
-        title="Select the file to launch",
+    py_script = filedialog.askopenfilename(
+        title="Select the Python script to convert for AppImage",
+        filetypes=[("Python Files", "*.py")],
         initialdir=os.path.expanduser("~")
     )
-    if not file_path:
-        messagebox.showinfo("Cancelled", "No file selected. Exiting. 😕")
+    if not py_script:
+        messagebox.showinfo("Cancelled", "No Python script selected. Exiting. 😕")
         return
-
-    if messagebox.askyesno("Icon", "Do you want to choose an icon for your app? 🤔"):
-        icon_path = filedialog.askopenfilename(
-            title="Select an icon image",
-            filetypes=[("Image Files", "*.png *.jpg *.svg *.ico"), ("All Files", "*.*")]
-        )
-        if not icon_path:
-            icon_path = "utilities-terminal"
-    else:
-        icon_path = "utilities-terminal"
 
     app_name = simpledialog.askstring("App Name", "Enter the app name:", parent=root)
     if not app_name:
         messagebox.showinfo("Cancelled", "No app name provided. Exiting. 😕")
         return
 
+    icon_path = None
+    if messagebox.askyesno("Icon", "Do you want to choose an icon for your app? 🤔"):
+        icon_path = filedialog.askopenfilename(
+            title="Select an icon image (ICO recommended)",
+            filetypes=[("Icon Files", "*.ico"), ("Image Files", "*.png *.jpg *.svg"), ("All Files", "*.*")]
+        )
+        if not icon_path:
+            icon_path = None
+
+    use_terminal = messagebox.askyesno("Terminal?", "Should the app run in a terminal window? (No = hidden)")
+    no_console_flag = "--noconsole" if not use_terminal else ""
+
+    check_install_pyinstaller()
+    check_linuxdeploy()
+
+    work_dir = os.getcwd()
+    pyinstaller_cmd = [
+        "pyinstaller",
+        "--onefile",
+        f"--name={app_name}"
+    ]
+    if icon_path:
+        pyinstaller_cmd.append(f"--icon={icon_path}")
+    if no_console_flag:
+        pyinstaller_cmd.append(no_console_flag)
+    pyinstaller_cmd.append(py_script)
+
+    try:
+        subprocess.check_call(pyinstaller_cmd)
+    except subprocess.CalledProcessError as e:
+        messagebox.showerror("Error", f"PyInstaller failed: {e} 😢")
+        return
+
+    dist_dir = os.path.join(work_dir, "dist")
+    exe_path = os.path.join(dist_dir, app_name)
+    if not os.path.exists(exe_path):
+        exe_path = os.path.join(dist_dir, app_name + ".exe")
+        if not os.path.exists(exe_path):
+            messagebox.showerror("Error", "Executable not found after PyInstaller. 😢")
+            return
+
+    # Create AppDir structure
+    appdir = os.path.join(work_dir, f"{app_name}.AppDir")
+    usr_bin = os.path.join(appdir, "usr", "bin")
+    os.makedirs(usr_bin, exist_ok=True)
+    final_exe_path = os.path.join(usr_bin, app_name)
+    try:
+        shutil.move(exe_path, final_exe_path)
+        os.chmod(final_exe_path, 0o755)
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to move the executable: {e} 😢")
+        return
+
+    # Create a .desktop file inside AppDir
     desktop_entry = f"""[Desktop Entry]
 Type=Application
 Name={app_name}
-Exec="{file_path}"
+Exec={app_name}
+Icon={icon_path if icon_path else "utilities-terminal"}
+Terminal=false
+Categories=Utility;
+"""
+    desktop_file_dir = os.path.join(appdir, "usr", "share", "applications")
+    os.makedirs(desktop_file_dir, exist_ok=True)
+    desktop_file_path = os.path.join(desktop_file_dir, f"{app_name}.desktop")
+    try:
+        with open(desktop_file_path, "w") as f:
+            f.write(desktop_entry)
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to create .desktop file in AppDir: {e} 😢")
+        return
+
+    # Run linuxdeploy to package the AppDir into an AppImage.
+    try:
+        subprocess.check_call(["linuxdeploy", "--appdir", appdir, "--output", "appimage"])
+    except subprocess.CalledProcessError as e:
+        messagebox.showerror("Error", f"linuxdeploy failed: {e} 😢")
+        return
+
+    messagebox.showinfo("Success", f"AppImage for '{app_name}' created successfully in {work_dir}! 🚀")
+    # Cleanup temporary files
+    for folder in ["build", "dist"]:
+        folder_path = os.path.join(work_dir, folder)
+        if os.path.exists(folder_path):
+            shutil.rmtree(folder_path)
+    spec_file = os.path.join(work_dir, f"{app_name}.spec")
+    if os.path.exists(spec_file):
+        os.remove(spec_file)
+    root.destroy()
+
+def create_bash_app():
+    """Create a desktop entry for a Bash script."""
+    root = tk.Tk()
+    root.withdraw()
+
+    bash_script = filedialog.askopenfilename(
+        title="Select the Bash script",
+        filetypes=[("Bash Scripts", "*.sh"), ("All Files", "*.*")],
+        initialdir=os.path.expanduser("~")
+    )
+    if not bash_script:
+        messagebox.showinfo("Cancelled", "No Bash script selected. Exiting. 😕")
+        return
+
+    app_name = simpledialog.askstring("App Name", "Enter the app name:", parent=root)
+    if not app_name:
+        messagebox.showinfo("Cancelled", "No app name provided. Exiting. 😕")
+        return
+
+    icon_path = "utilities-terminal"
+    if messagebox.askyesno("Icon", "Do you want to choose an icon for your app? 🤔"):
+        chosen_icon = filedialog.askopenfilename(
+            title="Select an icon image",
+            filetypes=[("Image Files", "*.png *.jpg *.svg *.ico"), ("All Files", "*.*")]
+        )
+        if chosen_icon:
+            icon_path = chosen_icon
+
+    # Ensure the bash script is executable.
+    try:
+        os.chmod(bash_script, 0o755)
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to set executable permission: {e} 😢")
+        return
+
+    desktop_entry = f"""[Desktop Entry]
+Type=Application
+Name={app_name}
+Exec="{bash_script}"
+Icon={icon_path}
+Terminal=true
+Categories=Utility;
+"""
+    applications_dir = os.path.join(os.path.expanduser("~"), ".local", "share", "applications")
+    os.makedirs(applications_dir, exist_ok=True)
+    desktop_file_path = os.path.join(applications_dir, f"{app_name}.desktop")
+    try:
+        with open(desktop_file_path, "w") as f:
+            f.write(desktop_entry)
+        os.chmod(desktop_file_path, 0o755)
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to create desktop entry: {e} 😢")
+        return
+
+    messagebox.showinfo("Success", f"Bash app '{app_name}' created successfully! 🚀")
+    root.destroy()
+
+def create_jar_app():
+    """Create a desktop entry to launch a Java JAR file."""
+    root = tk.Tk()
+    root.withdraw()
+
+    jar_file = filedialog.askopenfilename(
+        title="Select the JAR file",
+        filetypes=[("JAR Files", "*.jar"), ("All Files", "*.*")],
+        initialdir=os.path.expanduser("~")
+    )
+    if not jar_file:
+        messagebox.showinfo("Cancelled", "No JAR file selected. Exiting. 😕")
+        return
+
+    app_name = simpledialog.askstring("App Name", "Enter the app name:", parent=root)
+    if not app_name:
+        messagebox.showinfo("Cancelled", "No app name provided. Exiting. 😕")
+        return
+
+    icon_path = "utilities-terminal"
+    if messagebox.askyesno("Icon", "Do you want to choose an icon for your app? 🤔"):
+        chosen_icon = filedialog.askopenfilename(
+            title="Select an icon image",
+            filetypes=[("Image Files", "*.png *.jpg *.svg *.ico"), ("All Files", "*.*")]
+        )
+        if chosen_icon:
+            icon_path = chosen_icon
+
+    desktop_entry = f"""[Desktop Entry]
+Type=Application
+Name={app_name}
+Exec=java -jar "{jar_file}"
 Icon={icon_path}
 Terminal=false
 Categories=Utility;
@@ -172,39 +337,15 @@ Categories=Utility;
     applications_dir = os.path.join(os.path.expanduser("~"), ".local", "share", "applications")
     os.makedirs(applications_dir, exist_ok=True)
     desktop_file_path = os.path.join(applications_dir, f"{app_name}.desktop")
-
     try:
         with open(desktop_file_path, "w") as f:
             f.write(desktop_entry)
         os.chmod(desktop_file_path, 0o755)
     except Exception as e:
-        messagebox.showerror("Error", f"Failed to create desktop app: {e} 😢")
+        messagebox.showerror("Error", f"Failed to create desktop entry: {e} 😢")
         return
 
-    if messagebox.askyesno("Terminal Variant", "Do you want a terminal version as well? 💻"):
-        term_app_name = simpledialog.askstring("Terminal App Name",
-                                                 f"Enter name for terminal version (default: {app_name} Terminal):",
-                                                 parent=root)
-        if not term_app_name:
-            term_app_name = f"{app_name} Terminal"
-        term_entry = f"""[Desktop Entry]
-Type=Application
-Name={term_app_name}
-Exec="{file_path}"
-Icon={icon_path}
-Terminal=true
-Categories=Utility;
-"""
-        term_desktop_file_path = os.path.join(applications_dir, f"{term_app_name}.desktop")
-        try:
-            with open(term_desktop_file_path, "w") as f:
-                f.write(term_entry)
-            os.chmod(term_desktop_file_path, 0o755)
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to create terminal desktop app: {e} 😢")
-            return
-
-    messagebox.showinfo("Success", f"App(s) '{app_name}' created and added to your app menu! 🚀")
+    messagebox.showinfo("Success", f"Java app '{app_name}' created successfully! 🚀")
     root.destroy()
 
 def delete_app():
@@ -239,9 +380,11 @@ def main_menu():
     menu.title("Custom App Manager")
     tk.Label(menu, text="Choose an operation:", font=("Arial", 12)).pack(padx=10, pady=10)
 
-    tk.Button(menu, text="Create New App", width=25, command=lambda: [menu.destroy(), create_app()]).pack(pady=5)
-    tk.Button(menu, text="Convert Python Script to App", width=25, command=lambda: [menu.destroy(), convert_python_app()]).pack(pady=5)
-    tk.Button(menu, text="Delete Existing App", width=25, command=lambda: [menu.destroy(), delete_app()]).pack(pady=5)
+    tk.Button(menu, text="Convert Python Script to App", width=30, command=lambda: [menu.destroy(), convert_python_app()]).pack(pady=5)
+    tk.Button(menu, text="Convert Python Script to AppImage", width=30, command=lambda: [menu.destroy(), convert_python_appimage()]).pack(pady=5)
+    tk.Button(menu, text="Create Bash Script App", width=30, command=lambda: [menu.destroy(), create_bash_app()]).pack(pady=5)
+    tk.Button(menu, text="Create Java App (JAR)", width=30, command=lambda: [menu.destroy(), create_jar_app()]).pack(pady=5)
+    tk.Button(menu, text="Delete Existing App", width=30, command=lambda: [menu.destroy(), delete_app()]).pack(pady=5)
 
     menu.mainloop()
 
