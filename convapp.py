@@ -14,7 +14,7 @@ def check_install_pyinstaller():
         if result.returncode != 0:
             raise Exception("PyInstaller not found")
     except Exception:
-        if messagebox.askyesno("Install PyInstaller", "PyInstaller is not installed. Install it now?"):
+        if messagebox.askyesno("Install PyInstaller", "PyInstaller is not installed. Install it now? 🤔"):
             subprocess.check_call([sys.executable, "-m", "pip", "install", "--user", "pyinstaller"])
         else:
             messagebox.showerror("Error", "PyInstaller is required to convert scripts. Exiting. 😢")
@@ -348,6 +348,75 @@ Categories=Utility;
     messagebox.showinfo("Success", f"Java app '{app_name}' created successfully! 🚀")
     root.destroy()
 
+def convert_appimage_to_app():
+    """Convert an existing AppImage into a desktop application entry."""
+    root = tk.Tk()
+    root.withdraw()
+
+    appimage_file = filedialog.askopenfilename(
+        title="Select the AppImage file",
+        filetypes=[("AppImage Files", "*.AppImage"), ("All Files", "*.*")],
+        initialdir=os.path.expanduser("~")
+    )
+    if not appimage_file:
+        messagebox.showinfo("Cancelled", "No AppImage selected. Exiting. 😕")
+        return
+
+    app_name = simpledialog.askstring("App Name", "Enter the app name for the AppImage:", parent=root)
+    if not app_name:
+        messagebox.showinfo("Cancelled", "No app name provided. Exiting. 😕")
+        return
+
+    icon_path = None
+    if messagebox.askyesno("Icon", "Do you want to choose an icon for your AppImage app? 🤔"):
+        icon_path = filedialog.askopenfilename(
+            title="Select an icon image",
+            filetypes=[("Icon Files", "*.ico"), ("Image Files", "*.png *.jpg *.svg"), ("All Files", "*.*")]
+        )
+        if not icon_path:
+            icon_path = None
+
+    # Ensure the AppImage is executable
+    try:
+        os.chmod(appimage_file, 0o755)
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to set executable permission: {e} 😢")
+        return
+
+    # Move the AppImage to a dedicated folder
+    final_dir = os.path.join(os.path.expanduser("~"), ".local", "share", "applications", "appimages")
+    os.makedirs(final_dir, exist_ok=True)
+    final_appimage_path = os.path.join(final_dir, os.path.basename(appimage_file))
+    try:
+        shutil.copy(appimage_file, final_appimage_path)
+        os.chmod(final_appimage_path, 0o755)
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to copy the AppImage: {e} 😢")
+        return
+
+    # Create a desktop entry for the AppImage
+    desktop_entry = f"""[Desktop Entry]
+Type=Application
+Name={app_name}
+Exec="{final_appimage_path}"
+Icon={icon_path if icon_path else "utilities-terminal"}
+Terminal=false
+Categories=Utility;
+"""
+    applications_dir = os.path.join(os.path.expanduser("~"), ".local", "share", "applications")
+    os.makedirs(applications_dir, exist_ok=True)
+    desktop_file_path = os.path.join(applications_dir, f"{app_name}.desktop")
+    try:
+        with open(desktop_file_path, "w") as f:
+            f.write(desktop_entry)
+        os.chmod(desktop_file_path, 0o755)
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to create desktop entry: {e} 😢")
+        return
+
+    messagebox.showinfo("Success", f"AppImage '{app_name}' converted to an application successfully! 🚀")
+    root.destroy()
+
 def delete_app():
     applications_dir = os.path.join(os.path.expanduser("~"), ".local", "share", "applications")
     if not os.path.isdir(applications_dir):
@@ -380,11 +449,12 @@ def main_menu():
     menu.title("Custom App Manager")
     tk.Label(menu, text="Choose an operation:", font=("Arial", 12)).pack(padx=10, pady=10)
 
-    tk.Button(menu, text="Convert Python Script to App", width=30, command=lambda: [menu.destroy(), convert_python_app()]).pack(pady=5)
-    tk.Button(menu, text="Convert Python Script to AppImage", width=30, command=lambda: [menu.destroy(), convert_python_appimage()]).pack(pady=5)
-    tk.Button(menu, text="Create Bash Script App", width=30, command=lambda: [menu.destroy(), create_bash_app()]).pack(pady=5)
-    tk.Button(menu, text="Create Java App (JAR)", width=30, command=lambda: [menu.destroy(), create_jar_app()]).pack(pady=5)
-    tk.Button(menu, text="Delete Existing App", width=30, command=lambda: [menu.destroy(), delete_app()]).pack(pady=5)
+    tk.Button(menu, text="Convert Python Script to App", width=40, command=lambda: [menu.destroy(), convert_python_app()]).pack(pady=5)
+    tk.Button(menu, text="Convert Python Script to AppImage", width=40, command=lambda: [menu.destroy(), convert_python_appimage()]).pack(pady=5)
+    tk.Button(menu, text="Create Bash Script App", width=40, command=lambda: [menu.destroy(), create_bash_app()]).pack(pady=5)
+    tk.Button(menu, text="Create Java App (JAR)", width=40, command=lambda: [menu.destroy(), create_jar_app()]).pack(pady=5)
+    tk.Button(menu, text="Convert AppImage to Application", width=40, command=lambda: [menu.destroy(), convert_appimage_to_app()]).pack(pady=5)
+    tk.Button(menu, text="Delete Existing App", width=40, command=lambda: [menu.destroy(), delete_app()]).pack(pady=5)
 
     menu.mainloop()
 
